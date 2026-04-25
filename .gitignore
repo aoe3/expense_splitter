@@ -1,0 +1,15 @@
+# Python env
+.venv/
+
+# Training data
+training/
+
+# Generated files
+parsed_items.json
+expenses.csv
+expenses_OG.csv
+
+.DS_Store
+
+# logs/temp
+*.log
