@@ -1,0 +1,17 @@
+{
+  "name": "expense-splitter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "parse": "tsx src/receipt_parser.ts",
+    "build-expenses": "tsx src/expense_builder.ts",
+    "invoice": "tsx src/invoice_creator.ts",
+    "test": "python tests/run_tests.py"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

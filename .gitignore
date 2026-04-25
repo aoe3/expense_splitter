@@ -1,17 +1,65 @@
-# Python env
-.venv/
-
-# Training data
-training/
-
-# Generated files
-parsed_items.json
-expenses.csv
+# orig
 expenses_OG.csv
+
+# early test
 receipt_summary.json
+expenses.csv
 
 .DS_Store
 
 # logs/temp
 *.log
 ocr_debug/
+
+# -------------------------
+# ENV / SYSTEM
+# -------------------------
+.venv/
+venv/
+.env
+.DS_Store
+
+# -------------------------
+# NODE
+# -------------------------
+node_modules/
+dist/
+build/
+
+# -------------------------
+# TRAINING DATA (HUGE)
+# -------------------------
+training/
+
+# -------------------------
+# GENERATED DATA (DO NOT TRACK)
+# -------------------------
+data/generated/
+data/input/receipt.txt
+
+# -------------------------
+# OCR DEBUG OUTPUT
+# -------------------------
+ocr_debug/
+data/generated/ocr_debug/
+
+# -------------------------
+# CSV OUTPUTS (OPTIONAL TO TRACK)
+# -------------------------
+data/generated/*.csv
+
+# -------------------------
+# LOGS
+# -------------------------
+*.log
+
+# -------------------------
+# PYTHON CACHE
+# -------------------------
+__pycache__/
+*.pyc
+
+# -------------------------
+# TEST ARTIFACTS
+# -------------------------
+tests/output/
