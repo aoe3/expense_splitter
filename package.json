@@ -7,7 +7,8 @@
     "parse": "tsx src/receipt_parser.ts",
     "build-expenses": "tsx src/expense_builder.ts",
     "invoice": "tsx src/invoice_creator.ts",
-    "test": "python tests/run_tests.py"
+    "test": "python tests/run_tests.py",
+    "mock-db": "npx tsx src/fake_database.ts"
   },
   "devDependencies": {
     "@types/node": "latest",
