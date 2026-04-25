@@ -9,60 +9,193 @@ type ParsedItem = {
   rawLine: string;
 };
 
-const RECEIPT_PATH = path.join(process.cwd(), "receipt.txt");
+type ReceiptAnalysis = {
+  parsedItems: number;
+  linesWithPrices: number;
+  candidateItemLines: number;
+  confidence: number;
+  isItemized: boolean;
+};
 
-function parseMoney(value: string): number {
-  return Number(value.replace("$", "").trim());
-}
+type ReceiptSummary = {
+  receiptType: "non-itemized";
+  total: number;
+  totalSourceLine: string | null;
+  parsedItems: number;
+  candidateItemLines: number;
+  confidence: number;
+  source: string;
+};
+
+const RECEIPT_PATH = path.join(process.cwd(), "receipt.txt");
+const PARSED_ITEMS_PATH = path.join(process.cwd(), "parsed_items.json");
+const RECEIPT_SUMMARY_PATH = path.join(process.cwd(), "receipt_summary.json");
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function parseMoney(value: string): number {
+  return Number(
+    value
+      .replace("$", "")
+      .replace(",", ".")        // fix 234,40 → 234.40
+      .replace(/[^\d.]/g, "")   // remove garbage like %
+      .trim()
+  );
+}
+
 function cleanLine(line: string): string {
   return line
-    .replace(/\s+/g, " ")
     .replace(/[|]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-function isNonItemLine(line: string): boolean {
+function isBadLine(line: string): boolean {
   const upper = line.toUpperCase();
 
   return (
+    !line ||
     upper.includes("SUBTOTAL") ||
+    upper.includes("SUB TOTAL") ||
     upper.includes("GRAND TOTAL") ||
+    upper.includes("TOTAL AMOUNT") ||
     upper.includes("AMOUNT DUE") ||
+    upper.includes("PAID AMOUNT") ||
+    upper.includes("BILL PAYMENT") ||
+    upper.includes("AMOUNT COLLECTED") ||
     upper.includes("TAX") ||
     upper.includes("TIP") ||
     upper.includes("TABLE") ||
     upper.includes("GUEST") ||
     upper.includes("SEQUENCE") ||
+    upper.includes("SERVER") ||
+    upper.includes("CASHIER") ||
+    upper.includes("CREDIT CARD") ||
+    upper.includes("CARD NO") ||
+    upper.includes("ACCOUNT") ||
+    upper.includes("CUSTOMER") ||
+    upper.includes("THANK") ||
     upper.includes("GRACIAS") ||
+    upper.includes("INVOICE") ||
     upper.includes("QTY") ||
-    upper.includes("PRICE") ||
-    upper.includes("ITEM")
+    upper.includes("PRICE")
   );
+}
+
+function hasPrice(line: string): boolean {
+  return /\$?\d+[.,]\d{2}/.test(line);
+}
+
+function isOnlyPrice(line: string): boolean {
+  return /^\$?\d+[.,]\d{2}$/.test(line.trim());
+}
+
+function looksLikeItemName(line: string): boolean {
+  if (isBadLine(line)) return false;
+  if (hasPrice(line)) return false;
+  if (/^\d+$/.test(line)) return false;
+  if (line.length < 2) return false;
+
+  return /[A-Za-z]/.test(line);
+}
+
+function getMoneyValues(line: string): number[] {
+  const matches = line.match(/\$?\d+[.,]\d{2}/g) ?? [];
+  return matches.map(parseMoney).filter((value) => Number.isFinite(value));
+}
+
+function getLastMoneyValue(line: string): number | null {
+  const values = getMoneyValues(line);
+  return values.length > 0 ? values[values.length - 1] : null;
+}
+
+function isStrongTotalKeyword(line: string): boolean {
+  const upper = line.toUpperCase();
+
+  return (
+    upper.includes("AMOUNT DUE") ||
+    upper.includes("GRAND TOTAL") ||
+    upper.includes("TOTAL AMOUNT") ||
+    upper.includes("PAID AMOUNT") ||
+    upper.includes("AMOUNT COLLECTED") ||
+    upper === "TOTAL"
+  );
+}
+
+function isWeakTotalKeyword(line: string): boolean {
+  const upper = line.toUpperCase();
+
+  return (
+    upper.includes("TOTAL") &&
+    !upper.includes("SUBTOTAL") &&
+    !upper.includes("SUB TOTAL") &&
+    !upper.includes("TAX") &&
+    !upper.includes("TIP")
+  );
+}
+
+function extractNonItemizedTotal(lines: string[]): { total: number | null; sourceLine: string | null } {
+  const strongCandidates: Array<{ total: number; sourceLine: string }> = [];
+  const weakCandidates: Array<{ total: number; sourceLine: string }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const sameLineAmount = getLastMoneyValue(line);
+
+    if (isStrongTotalKeyword(line)) {
+      if (sameLineAmount !== null) {
+        strongCandidates.push({ total: sameLineAmount, sourceLine: line });
+      }
+
+      const nextLine = lines[i + 1];
+      if (nextLine && isOnlyPrice(nextLine)) {
+        strongCandidates.push({ total: parseMoney(nextLine), sourceLine: `${line} / ${nextLine}` });
+      }
+    } else if (isWeakTotalKeyword(line)) {
+      if (sameLineAmount !== null) {
+        weakCandidates.push({ total: sameLineAmount, sourceLine: line });
+      }
+
+      const nextLine = lines[i + 1];
+      if (nextLine && isOnlyPrice(nextLine)) {
+        weakCandidates.push({ total: parseMoney(nextLine), sourceLine: `${line} / ${nextLine}` });
+      }
+    }
+  }
+
+  const candidates = strongCandidates.length > 0 ? strongCandidates : weakCandidates;
+
+  if (candidates.length === 0) {
+    return { total: null, sourceLine: null };
+  }
+
+  const best = candidates.reduce((largest, current) =>
+    current.total > largest.total ? current : largest,
+  );
+
+  return {
+    total: roundMoney(best.total),
+    sourceLine: best.sourceLine,
+  };
 }
 
 function parseReceiptLine(line: string): ParsedItem | null {
   const cleaned = cleanLine(line);
 
-  if (!cleaned || isNonItemLine(cleaned)) {
-    return null;
-  }
+  if (isBadLine(cleaned)) return null;
 
   /**
-   * Handles:
    * MOJITO (2@$8.00) $16.00
    * AGUA BOTELLA (3@$1.50) $4.50
    */
-  const quantityMatch = cleaned.match(
-    /^(.*?)\s*\((\d+)\s*@\s*\$?(\d+(?:\.\d{2})?)\)\s*\$?(\d+(?:\.\d{2})?)$/,
+  const quantityAtPriceMatch = cleaned.match(
+    /^(.*?)\s*\((\d+)\s*@\s*\$?(\d+(?:[.,]\d{2})?)\)\s*\$?(\d+(?:[.,]\d{2})?)$/,
   );
 
-  if (quantityMatch) {
-    const [, rawName, quantityRaw, unitRaw, totalRaw] = quantityMatch;
+  if (quantityAtPriceMatch) {
+    const [, rawName, quantityRaw, unitRaw, totalRaw] = quantityAtPriceMatch;
 
     return {
       name: rawName.trim(),
@@ -74,20 +207,16 @@ function parseReceiptLine(line: string): ParsedItem | null {
   }
 
   /**
-   * Handles:
-   * CHORIZO AL VINO 1 $7.95
-   * MINI EMPANADILLAS 1 $6.95
-   *
-   * Also works if OCR drops the quantity and only sees:
-   * CHORIZO AL VINO $7.95
+   * MOJITO 2 $16.00
+   * MOJITO 2 16.00
    */
-  const simpleMatch = cleaned.match(
-    /^(.*?)\s+(?:(\d+)\s+)?\$?(\d+(?:\.\d{2})?)$/,
+  const qtyTotalMatch = cleaned.match(
+    /^(.*?)\s+(\d+)\s+\$?(\d+(?:[.,]\d{2})?)$/,
   );
 
-  if (simpleMatch) {
-    const [, rawName, quantityRaw, totalRaw] = simpleMatch;
-    const quantity = quantityRaw ? Number(quantityRaw) : 1;
+  if (qtyTotalMatch) {
+    const [, rawName, quantityRaw, totalRaw] = qtyTotalMatch;
+    const quantity = Number(quantityRaw);
     const totalPrice = parseMoney(totalRaw);
 
     return {
@@ -99,7 +228,51 @@ function parseReceiptLine(line: string): ParsedItem | null {
     };
   }
 
+  /**
+   * MOJITO $8.00
+   * MOJITO 8.00
+   */
+  const simplePriceMatch = cleaned.match(
+    /^(.*?)\s+\$?(\d+(?:[.,]\d{2})?)$/,
+  );
+
+  if (simplePriceMatch) {
+    const [, rawName, totalRaw] = simplePriceMatch;
+    const name = rawName.trim();
+
+    if (!name || !/[A-Za-z]/.test(name)) return null;
+
+    const totalPrice = parseMoney(totalRaw);
+
+    return {
+      name,
+      quantity: 1,
+      unitPrice: totalPrice,
+      totalPrice,
+      rawLine: line,
+    };
+  }
+
   return null;
+}
+
+function combineSplitNameAndPriceLines(lines: string[]): string[] {
+  const combined: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const current = lines[i];
+    const next = lines[i + 1];
+
+    if (looksLikeItemName(current) && next && isOnlyPrice(next)) {
+      combined.push(`${current} ${next}`);
+      i++;
+      continue;
+    }
+
+    combined.push(current);
+  }
+
+  return combined;
 }
 
 function splitMultiples(items: ParsedItem[]): ParsedItem[] {
@@ -126,11 +299,50 @@ function splitMultiples(items: ParsedItem[]): ParsedItem[] {
 }
 
 function parseReceiptText(text: string): ParsedItem[] {
-  return text
+  const cleanedLines = text
     .split(/\r?\n/)
     .map(cleanLine)
+    .filter(Boolean);
+
+  const combinedLines = combineSplitNameAndPriceLines(cleanedLines);
+
+  return combinedLines
     .map(parseReceiptLine)
     .filter((item): item is ParsedItem => item !== null);
+}
+
+function analyzeReceipt(lines: string[], parsedItems: ParsedItem[]): ReceiptAnalysis {
+  const linesWithPrices = lines.filter(hasPrice).length;
+
+  const candidateItemLines = lines.filter(
+    (line) => hasPrice(line) && !isBadLine(line),
+  ).length;
+
+  const parsedCount = parsedItems.length;
+
+  const confidence =
+    candidateItemLines === 0
+      ? 0
+      : parsedCount / candidateItemLines;
+
+  const isItemized =
+    parsedCount >= 2 &&
+    candidateItemLines >= 3 &&
+    confidence > 0.4;
+
+  return {
+    parsedItems: parsedCount,
+    linesWithPrices,
+    candidateItemLines,
+    confidence,
+    isItemized,
+  };
+}
+
+function deleteIfExists(filePath: string): void {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
 }
 
 function main(): void {
@@ -141,8 +353,62 @@ function main(): void {
 
   const rawReceiptText = fs.readFileSync(RECEIPT_PATH, "utf-8");
 
+  const cleanedLines = rawReceiptText
+    .split(/\r?\n/)
+    .map(cleanLine)
+    .filter(Boolean);
+
   const parsedItems = parseReceiptText(rawReceiptText);
   const splitItems = splitMultiples(parsedItems);
+
+  const analysis = analyzeReceipt(cleanedLines, parsedItems);
+
+  if (!analysis.isItemized) {
+    const extractedTotal = extractNonItemizedTotal(cleanedLines);
+
+    deleteIfExists(PARSED_ITEMS_PATH);
+
+    const summary: ReceiptSummary = {
+      receiptType: "non-itemized",
+      total: extractedTotal.total ?? 0,
+      totalSourceLine: extractedTotal.sourceLine,
+      parsedItems: analysis.parsedItems,
+      candidateItemLines: analysis.candidateItemLines,
+      confidence: roundMoney(analysis.confidence),
+      source: RECEIPT_PATH,
+    };
+
+    fs.writeFileSync(
+      RECEIPT_SUMMARY_PATH,
+      JSON.stringify(summary, null, 2),
+      "utf-8",
+    );
+
+    console.log("\n⚠️ Likely NON-itemized receipt.");
+    console.log(`Parsed items: ${analysis.parsedItems}`);
+    console.log(`Candidate lines: ${analysis.candidateItemLines}`);
+    console.log(`Confidence: ${analysis.confidence.toFixed(2)}`);
+
+    if (extractedTotal.total !== null) {
+      console.log(`Detected total: $${extractedTotal.total.toFixed(2)}`);
+      console.log(`Total source: ${extractedTotal.sourceLine}`);
+    } else {
+      console.log("Detected total: not found");
+      console.log("You can still enter the total manually in expense_builder.ts.");
+    }
+
+    console.log(`Wrote ${RECEIPT_SUMMARY_PATH}`);
+    console.log("Run: npx tsx expense_builder.ts");
+    return;
+  }
+
+  deleteIfExists(RECEIPT_SUMMARY_PATH);
+
+  fs.writeFileSync(
+    PARSED_ITEMS_PATH,
+    JSON.stringify(splitItems, null, 2),
+    "utf-8",
+  );
 
   console.log("\nParsed receipt items:");
   console.table(parsedItems);
@@ -152,13 +418,9 @@ function main(): void {
 
   const subtotal = splitItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
-  fs.writeFileSync(
-    path.join(process.cwd(), "parsed_items.json"),
-    JSON.stringify(splitItems, null, 2),
-    "utf-8",
-    );
-
   console.log(`\nParsed subtotal: $${roundMoney(subtotal).toFixed(2)}`);
+  console.log(`Wrote ${PARSED_ITEMS_PATH}`);
+  console.log("Run: npx tsx expense_builder.ts");
 }
 
 main();

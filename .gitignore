@@ -8,6 +8,7 @@ training/
 parsed_items.json
 expenses.csv
 expenses_OG.csv
+receipt_summary.json
 
 .DS_Store
 
