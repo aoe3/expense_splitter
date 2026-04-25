@@ -14,3 +14,4 @@ receipt_summary.json
 
 # logs/temp
 *.log
+ocr_debug/
