@@ -56,3 +56,18 @@ __pycache__/
 # TEST ARTIFACTS
 # -------------------------
 tests/output/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+.web-build/
+expense_splitter_app/node_modules/
+expense_splitter_app/.expo/
+expense_splitter_app/.expo-shared/
+expense_splitter_app/.web-build/
+
+# Metro / React Native cache
+*.metro-cache
+
+# Mac noise
+**/.DS_Store

@@ -4,10 +4,22 @@
  * This is NOT a real database adapter yet. It is a typed seed model that lets us
  * build product flows before choosing storage/auth/payments. V1 creates invoices
  * only; it does not monitor or process payment fulfillment.
+ *
+ * Table order / dependency order:
+ * 1. users
+ * 2. phoneNumbers
+ * 3. userConnections
+ * 4. tripGroups
+ * 5. receiptArtifacts
+ * 6. expenses
+ * 7. expenseItems
+ * 8. expenseSplits
+ * 9. invoices
  */
 
 type ISODateString = string;
 type MoneyCents = number;
+type CurrencyCode = "USD";
 
 type UserId = string;
 type PhoneNumberId = string;
@@ -82,6 +94,7 @@ type ExpenseItem = {
   quantity: number;
   unitPriceCents: MoneyCents;
   totalPriceCents: MoneyCents;
+  currency: CurrencyCode;
   rawLine: string | null;
 };
 
@@ -91,6 +104,7 @@ type ExpenseSplit = {
   expenseItemId: ExpenseItemId | null;
   participantRef: TripParticipantRef;
   amountCents: MoneyCents;
+  currency: CurrencyCode;
   reason: "item_share" | "tax_share" | "tip_share" | "manual_adjustment";
 };
 
@@ -105,6 +119,7 @@ type Expense = {
   taxCents: MoneyCents;
   tipCents: MoneyCents;
   totalCents: MoneyCents;
+  currency: CurrencyCode;
   status: ExpenseStatus;
   createdAt: ISODateString;
 };
@@ -116,6 +131,7 @@ type Invoice = {
   fromParticipantRef: TripParticipantRef;
   toParticipantRef: TripParticipantRef;
   amountCents: MoneyCents;
+  currency: CurrencyCode;
   status: InvoiceStatus;
   sentAt: ISODateString | null;
   createdAt: ISODateString;
@@ -134,6 +150,7 @@ type FakeDatabase = {
 };
 
 const now = "2026-04-25T04:00:00.000Z";
+const currency: CurrencyCode = "USD";
 
 export const fakeDatabase: FakeDatabase = {
   users: [
@@ -272,6 +289,7 @@ export const fakeDatabase: FakeDatabase = {
       taxCents: 372,
       tipCents: 840,
       totalCents: 5412,
+      currency,
       status: "ready_for_invoice",
       createdAt: now,
     },
@@ -285,6 +303,7 @@ export const fakeDatabase: FakeDatabase = {
       quantity: 1,
       unitPriceCents: 1200,
       totalPriceCents: 1200,
+      currency,
       rawLine: "TEST_ITEM_TACOS 12.00",
     },
     {
@@ -294,6 +313,7 @@ export const fakeDatabase: FakeDatabase = {
       quantity: 1,
       unitPriceCents: 1500,
       totalPriceCents: 1500,
+      currency,
       rawLine: "TEST_ITEM_BURGER 15.00",
     },
     {
@@ -303,6 +323,7 @@ export const fakeDatabase: FakeDatabase = {
       quantity: 1,
       unitPriceCents: 900,
       totalPriceCents: 900,
+      currency,
       rawLine: "TEST_ITEM_APPETIZER 9.00",
     },
     {
@@ -312,6 +333,7 @@ export const fakeDatabase: FakeDatabase = {
       quantity: 2,
       unitPriceCents: 300,
       totalPriceCents: 600,
+      currency,
       rawLine: "TEST_ITEM_DRINKS 2 @ 3.00",
     },
   ],
@@ -323,6 +345,7 @@ export const fakeDatabase: FakeDatabase = {
       expenseItemId: "expense_item_1",
       participantRef: { kind: "user", id: "user_test_2" },
       amountCents: 1200,
+      currency,
       reason: "item_share",
     },
     {
@@ -331,6 +354,7 @@ export const fakeDatabase: FakeDatabase = {
       expenseItemId: "expense_item_2",
       participantRef: { kind: "user", id: "user_test_3" },
       amountCents: 1500,
+      currency,
       reason: "item_share",
     },
     {
@@ -339,6 +363,7 @@ export const fakeDatabase: FakeDatabase = {
       expenseItemId: "expense_item_3",
       participantRef: { kind: "phone_contact", id: "phone_guest_1" },
       amountCents: 900,
+      currency,
       reason: "item_share",
     },
     {
@@ -347,6 +372,7 @@ export const fakeDatabase: FakeDatabase = {
       expenseItemId: "expense_item_4",
       participantRef: { kind: "user", id: "user_test_2" },
       amountCents: 300,
+      currency,
       reason: "item_share",
     },
     {
@@ -355,6 +381,7 @@ export const fakeDatabase: FakeDatabase = {
       expenseItemId: "expense_item_4",
       participantRef: { kind: "user", id: "user_test_3" },
       amountCents: 300,
+      currency,
       reason: "item_share",
     },
     {
@@ -362,7 +389,8 @@ export const fakeDatabase: FakeDatabase = {
       expenseId: "expense_1",
       expenseItemId: null,
       participantRef: { kind: "user", id: "user_test_2" },
-      amountCents: 404,
+      amountCents: 133,
+      currency,
       reason: "tax_share",
     },
     {
@@ -370,7 +398,8 @@ export const fakeDatabase: FakeDatabase = {
       expenseId: "expense_1",
       expenseItemId: null,
       participantRef: { kind: "user", id: "user_test_3" },
-      amountCents: 473,
+      amountCents: 160,
+      currency,
       reason: "tax_share",
     },
     {
@@ -378,8 +407,36 @@ export const fakeDatabase: FakeDatabase = {
       expenseId: "expense_1",
       expenseItemId: null,
       participantRef: { kind: "phone_contact", id: "phone_guest_1" },
-      amountCents: 335,
+      amountCents: 79,
+      currency,
       reason: "tax_share",
+    },
+    {
+      id: "split_9",
+      expenseId: "expense_1",
+      expenseItemId: null,
+      participantRef: { kind: "user", id: "user_test_2" },
+      amountCents: 300,
+      currency,
+      reason: "tip_share",
+    },
+    {
+      id: "split_10",
+      expenseId: "expense_1",
+      expenseItemId: null,
+      participantRef: { kind: "user", id: "user_test_3" },
+      amountCents: 360,
+      currency,
+      reason: "tip_share",
+    },
+    {
+      id: "split_11",
+      expenseId: "expense_1",
+      expenseItemId: null,
+      participantRef: { kind: "phone_contact", id: "phone_guest_1" },
+      amountCents: 180,
+      currency,
+      reason: "tip_share",
     },
   ],
 
@@ -390,7 +447,8 @@ export const fakeDatabase: FakeDatabase = {
       expenseIds: ["expense_1"],
       fromParticipantRef: { kind: "user", id: "user_test_1" },
       toParticipantRef: { kind: "user", id: "user_test_2" },
-      amountCents: 1904,
+      amountCents: 1933,
+      currency,
       status: "draft",
       sentAt: null,
       createdAt: now,
@@ -401,7 +459,8 @@ export const fakeDatabase: FakeDatabase = {
       expenseIds: ["expense_1"],
       fromParticipantRef: { kind: "user", id: "user_test_1" },
       toParticipantRef: { kind: "user", id: "user_test_3" },
-      amountCents: 2273,
+      amountCents: 2320,
+      currency,
       status: "draft",
       sentAt: null,
       createdAt: now,
@@ -412,7 +471,8 @@ export const fakeDatabase: FakeDatabase = {
       expenseIds: ["expense_1"],
       fromParticipantRef: { kind: "user", id: "user_test_1" },
       toParticipantRef: { kind: "phone_contact", id: "phone_guest_1" },
-      amountCents: 1235,
+      amountCents: 1159,
+      currency,
       status: "draft",
       sentAt: null,
       createdAt: now,
@@ -460,11 +520,41 @@ export function getDraftInvoicesForTrip(db: FakeDatabase, tripGroupId: TripGroup
   return db.invoices.filter((invoice) => invoice.tripGroupId === tripGroupId && invoice.status === "draft");
 }
 
-function formatMoney(cents: MoneyCents) {
-  return `$${(cents / 100).toFixed(2)}`;
+export function formatMoney(cents: MoneyCents, moneyCurrency: CurrencyCode = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: moneyCurrency,
+  }).format(cents / 100);
+}
+
+function assertMoneyIntegrity(db: FakeDatabase) {
+  for (const expense of db.expenses) {
+    const itemTotal = db.expenseItems
+      .filter((item) => item.expenseId === expense.id)
+      .reduce((sum, item) => sum + item.totalPriceCents, 0);
+
+    const expectedTotal = expense.subtotalCents + expense.taxCents + expense.tipCents;
+    const splitTotal = db.expenseSplits
+      .filter((split) => split.expenseId === expense.id)
+      .reduce((sum, split) => sum + split.amountCents, 0);
+
+    if (itemTotal !== expense.subtotalCents) {
+      throw new Error(`Expense ${expense.id} item total ${itemTotal} does not match subtotal ${expense.subtotalCents}.`);
+    }
+
+    if (expectedTotal !== expense.totalCents) {
+      throw new Error(`Expense ${expense.id} expected total ${expectedTotal} does not match total ${expense.totalCents}.`);
+    }
+
+    if (splitTotal !== expense.totalCents) {
+      throw new Error(`Expense ${expense.id} split total ${splitTotal} does not match total ${expense.totalCents}.`);
+    }
+  }
 }
 
 function printDemo() {
+  assertMoneyIntegrity(fakeDatabase);
+
   const tripGroupId = "trip_group_1";
   const tripGroup = fakeDatabase.tripGroups.find((trip) => trip.id === tripGroupId);
 
@@ -474,6 +564,16 @@ function printDemo() {
 
   console.log("Fake database loaded.");
   console.log(`Trip group: ${tripGroup.name}`);
+  console.log("Users table:");
+  console.table(
+    fakeDatabase.users.map((user) => ({
+      id: user.id,
+      displayName: user.displayName,
+      primaryPhoneNumberId: user.primaryPhoneNumberId,
+    })),
+  );
+
+  console.log("Trip participants:");
   console.table(getTripParticipants(fakeDatabase, tripGroupId));
 
   console.log("Draft invoices:");
@@ -481,7 +581,9 @@ function printDemo() {
     getDraftInvoicesForTrip(fakeDatabase, tripGroupId).map((invoice) => ({
       invoiceId: invoice.id,
       to: invoice.toParticipantRef.id,
-      amount: formatMoney(invoice.amountCents),
+      amountCents: invoice.amountCents,
+      currency: invoice.currency,
+      displayAmount: formatMoney(invoice.amountCents, invoice.currency),
       status: invoice.status,
     })),
   );
