@@ -1,16 +1,3 @@
-# orig
-expenses_OG.csv
-
-# early test
-receipt_summary.json
-expenses.csv
-
-.DS_Store
-
-# logs/temp
-*.log
-ocr_debug/
-
 # -------------------------
 # ENV / SYSTEM
 # -------------------------
@@ -41,12 +28,18 @@ data/input/receipt.txt
 # OCR DEBUG OUTPUT
 # -------------------------
 ocr_debug/
-data/generated/ocr_debug/
 
 # -------------------------
-# CSV OUTPUTS (OPTIONAL TO TRACK)
+# CSV OUTPUTS (LOCAL / GENERATED)
 # -------------------------
+expenses.csv
+expenses_OG.csv
 data/generated/*.csv
+
+# -------------------------
+# JSON OUTPUTS (GENERATED)
+# -------------------------
+receipt_summary.json
 
 # -------------------------
 # LOGS
